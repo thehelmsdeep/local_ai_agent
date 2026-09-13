@@ -29,9 +29,18 @@ def open_calculator() -> bool:
 
 
 def _click_button(window, name):
-    """Find a Calculator button by its UI name and click it."""
-    button = window.child_window(title=name, control_type="Button")
-    button.click_input()
+    """Find a Calculator button by UI Automation and click it."""
+    buttons = window.descendants(control_type="Button")
+
+    for button in buttons:
+        try:
+            if button.window_text() == name:
+                button.click_input()
+                return
+        except Exception:
+            continue
+
+    raise RuntimeError(f"Calculator button not found: {name}")
 
 
 def calculator(expression: str):
@@ -50,7 +59,6 @@ def calculator(expression: str):
         "4": "Four", "5": "Five", "6": "Six", "7": "Seven",
         "8": "Eight", "9": "Nine",
         "+": "Plus", "-": "Minus", "*": "Multiply", "/": "Divide",
-        "=": "Equals"
     }
 
     for char in expression:
