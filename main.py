@@ -1,62 +1,130 @@
+import json
 import os
-import ast
-import operator
+
 from dotenv import load_dotenv
+
+from tools import TOOLS
 
 load_dotenv()
 
-OPS = {
-    ast.Add: operator.add,
-    ast.Sub: operator.sub,
-    ast.Mult: operator.mul,
-    ast.Div: operator.truediv,
-    ast.Pow: operator.pow,
-    ast.Mod: operator.mod,
-}
+
+FUNCTION_TOOLS = [
+    {
+        "type": "function",
+        "name": "open_calculator",
+        "description": "Open the native Windows Calculator application.",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": False,
+        },
+        "strict": True,
+    },
+    {
+        "type": "function",
+        "name": "calculator",
+        "description": "Open Windows Calculator and enter a simple arithmetic expression.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "expression": {
+                    "type": "string",
+                    "description": "Arithmetic expression such as 25 * 4",
+                }
+            },
+            "required": ["expression"],
+            "additionalProperties": False,
+        },
+        "strict": True,
+    },
+]
 
 
-def safe_calculate(expression: str):
-    tree = ast.parse(expression, mode="eval")
-
-    def walk(node):
-        if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
-            return node.value
-        if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
-            value = walk(node.operand)
-            return value if isinstance(node.op, ast.UAdd) else -value
-        if isinstance(node, ast.BinOp) and type(node.op) in OPS:
-            return OPS[type(node.op)](walk(node.left), walk(node.right))
-        raise ValueError("Unsupported expression")
-
-    return walk(tree.body)
+SYSTEM_INSTRUCTIONS = """
+You are a local-first Windows AI agent.
+You can control the user's Windows Calculator through tools.
+When the user asks to open Calculator, call open_calculator.
+When the user asks to calculate something using Calculator, call calculator.
+Do not claim that you opened or controlled an application unless the tool returned successfully.
+""".strip()
 
 
-def run_agent(task: str):
-    task = task.strip()
-    if task.lower().startswith("calculate "):
-        expression = task[10:].strip()
-        return f"Result: {safe_calculate(expression)}"
+def demo_agent(task: str) -> str:
+    """Small local demo mode that works without an API key."""
+    text = task.strip().lower()
 
-    if task.lower() in {"hello", "hi", "test"}:
+    if text in {"hello", "hi", "test"}:
         return "Agent is working locally."
 
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return (
-            "Demo mode: no OPENAI_API_KEY configured. "
-            "Try: calculate 12 * (8 + 2)"
-        )
+    if "open calculator" in text or "calculator رو باز" in text:
+        return TOOLS["open_calculator"]()
 
+    if text.startswith("calculate "):
+        expression = task.strip()[10:].strip()
+        return TOOLS["calculator"](expression)
+
+    return (
+        "Demo mode: no OPENAI_API_KEY configured. "
+        "Try 'open calculator' or 'calculate 25 * 4'."
+    )
+
+
+def run_with_llm(task: str) -> str:
     from openai import OpenAI
 
-    client = OpenAI(api_key=api_key)
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     model = os.getenv("OPENAI_MODEL", "gpt-5-mini")
-    response = client.responses.create(model=model, input=task)
-    return response.output_text
+
+    input_items = [
+        {
+            "role": "user",
+            "content": [{"type": "input_text", "text": task}],
+        }
+    ]
+
+    for _ in range(5):
+        response = client.responses.create(
+            model=model,
+            instructions=SYSTEM_INSTRUCTIONS,
+            tools=FUNCTION_TOOLS,
+            input=input_items,
+        )
+
+        input_items += response.output
+        function_calls = [item for item in response.output if item.type == "function_call"]
+
+        if not function_calls:
+            return response.output_text
+
+        for call in function_calls:
+            try:
+                args = json.loads(call.arguments or "{}")
+                result = TOOLS[call.name](**args)
+            except Exception as exc:
+                result = f"Tool error: {exc}"
+
+            input_items.append(
+                {
+                    "type": "function_call_output",
+                    "call_id": call.call_id,
+                    "output": str(result),
+                }
+            )
+
+    return "Agent stopped after reaching the tool-call limit."
+
+
+def run_agent(task: str) -> str:
+    if not os.getenv("OPENAI_API_KEY"):
+        return demo_agent(task)
+    return run_with_llm(task)
 
 
 def main():
     print("Local AI Agent — type 'exit' to quit")
+    print("Windows tools: open Calculator / calculate with Calculator")
+
     while True:
         try:
             task = input("\nYou > ")
