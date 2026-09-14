@@ -5,8 +5,12 @@ import time
 from pywinauto import Desktop
 
 
+def _desktop():
+    return Desktop(backend="uia")
+
+
 def _calculator_window():
-    desktop = Desktop(backend="uia")
+    desktop = _desktop()
     windows = desktop.windows(title_re=r".*[Cc]alculator.*", visible_only=True)
     return windows[0] if windows else None
 
@@ -29,8 +33,7 @@ def open_calculator() -> bool:
 
 def list_windows():
     """Return visible top-level Windows application titles."""
-    desktop = Desktop(backend="uia")
-    windows = desktop.windows(visible_only=True)
+    windows = _desktop().windows(visible_only=True)
 
     titles = []
     seen = set()
@@ -45,6 +48,39 @@ def list_windows():
             continue
 
     return titles
+
+
+def focus_window(title: str):
+    """Find a visible top-level window by title and bring it to the foreground."""
+    query = title.strip().lower()
+    if not query:
+        raise ValueError("Window title cannot be empty")
+
+    windows = _desktop().windows(visible_only=True)
+
+    exact_match = None
+    partial_match = None
+
+    for window in windows:
+        try:
+            window_title = window.window_text().strip()
+            normalized = window_title.lower()
+
+            if normalized == query:
+                exact_match = window
+                break
+
+            if query in normalized and partial_match is None:
+                partial_match = window
+        except Exception:
+            continue
+
+    window = exact_match or partial_match
+    if window is None:
+        raise RuntimeError(f"Window not found: {title}")
+
+    window.set_focus()
+    return f"Focused window: {window.window_text().strip()}"
 
 
 def _click_button(window, names):
@@ -104,5 +140,6 @@ def calculator(expression: str):
 TOOLS = {
     "open_calculator": open_calculator,
     "list_windows": list_windows,
+    "focus_window": focus_window,
     "calculator": calculator,
 }
