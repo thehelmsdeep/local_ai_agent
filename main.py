@@ -95,6 +95,8 @@ FUNCTION_TOOLS = [
 SYSTEM_INSTRUCTIONS = """
 You are a local-first Windows AI agent.
 You can inspect visible Windows application windows and control Windows UI elements through tools.
+Work as an agent: observe the current UI state, reason about the next action, perform the action, then observe again when needed.
+Use multiple tool calls when a task requires multiple steps. Do not stop after one successful action if the user's task is not complete.
 When the user asks what applications/windows are open, call list_windows.
 When the user asks to focus, activate, or bring a visible application window to the foreground, call focus_window.
 When the user asks to click a named UI element inside an application, call click_element.
@@ -102,6 +104,7 @@ When the user asks to type text into a visible application, call type_text.
 When the user asks to read, inspect, or get visible text from an application, call read_ui.
 When the user asks to open Calculator, call open_calculator.
 When the user asks to calculate something using Calculator, call calculator.
+After performing UI actions, use read_ui when verification is useful or when the task requires knowing the resulting UI state.
 Do not claim an action succeeded unless the tool returned successfully.
 """.strip()
 
@@ -146,7 +149,7 @@ def run_with_llm(task: str) -> str:
     model = os.getenv("OPENAI_MODEL", "gpt-5-mini")
     input_items = [{"role": "user", "content": [{"type": "input_text", "text": task}]}]
 
-    for _ in range(5):
+    for _ in range(8):
         response = client.responses.create(model=model, instructions=SYSTEM_INSTRUCTIONS, tools=FUNCTION_TOOLS, input=input_items)
         input_items += response.output
         function_calls = [item for item in response.output if item.type == "function_call"]
