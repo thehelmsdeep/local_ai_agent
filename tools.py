@@ -123,6 +123,20 @@ def click_element(window_title: str, element_name: str):
     raise RuntimeError(f"UI element not found: {element_name}")
 
 
+def type_text(window_title: str, text: str):
+    """Focus a visible window and type text into the currently focused UI control."""
+    if not window_title.strip():
+        raise ValueError("Window title cannot be empty")
+    if not text:
+        raise ValueError("Text cannot be empty")
+
+    focus_window(window_title)
+
+    from pywinauto.keyboard import send_keys
+    send_keys(text, with_spaces=True)
+    return f"Typed text into '{window_title.strip()}': {text}"
+
+
 def _click_button(window, names):
     """Find a Calculator button using possible UI names."""
     buttons = window.descendants(control_type="Button")
@@ -182,5 +196,6 @@ TOOLS = {
     "list_windows": list_windows,
     "focus_window": focus_window,
     "click_element": click_element,
+    "type_text": type_text,
     "calculator": calculator,
 }
