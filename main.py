@@ -73,6 +73,27 @@ FUNCTION_TOOLS = [
     },
     {
         "type": "function",
+        "name": "type_text",
+        "description": "Focus a visible Windows application window and type text into the currently focused UI control.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "window_title": {
+                    "type": "string",
+                    "description": "Exact or partial application window title",
+                },
+                "text": {
+                    "type": "string",
+                    "description": "Text to type into the currently focused control",
+                },
+            },
+            "required": ["window_title", "text"],
+            "additionalProperties": False,
+        },
+        "strict": True,
+    },
+    {
+        "type": "function",
         "name": "calculator",
         "description": "Open Windows Calculator and enter a simple arithmetic expression.",
         "parameters": {
@@ -97,9 +118,10 @@ You can inspect visible Windows application windows and control Windows UI eleme
 When the user asks what applications/windows are open, call list_windows.
 When the user asks to focus, activate, or bring a visible application window to the foreground, call focus_window.
 When the user asks to click a named UI element inside an application, call click_element.
+When the user asks to type text into a visible application, call type_text.
 When the user asks to open Calculator, call open_calculator.
 When the user asks to calculate something using Calculator, call calculator.
-Do not claim that you opened, inspected, focused, clicked, or controlled an application unless the tool returned successfully.
+Do not claim that you opened, inspected, focused, clicked, typed into, or controlled an application unless the tool returned successfully.
 """.strip()
 
 
@@ -126,6 +148,12 @@ def demo_agent(task: str) -> str:
             return "Demo mode: use 'click Window Title | Element Name'."
         return TOOLS["click_element"](parts[0], parts[1])
 
+    if text.startswith("type "):
+        parts = task.strip()[5:].strip().split(" | ", 1)
+        if len(parts) != 2:
+            return "Demo mode: use 'type Window Title | text'."
+        return TOOLS["type_text"](parts[0], parts[1])
+
     if text.startswith("calculate "):
         expression = task.strip()[10:].strip()
         return TOOLS["calculator"](expression)
@@ -133,7 +161,7 @@ def demo_agent(task: str) -> str:
     return (
         "Demo mode: no OPENAI_API_KEY configured. "
         "Try 'open calculator', 'list windows', 'focus Chrome', "
-        "'click Calculator | Equals', or 'calculate 25 * 4'."
+        "'click Calculator | Equals', 'type Chrome | hello', or 'calculate 25 * 4'."
     )
 
 
@@ -190,7 +218,7 @@ def run_agent(task: str) -> str:
 
 def main():
     print("Local AI Agent — type 'exit' to quit")
-    print("Windows tools: open Calculator / list windows / focus window / click UI / calculate with Calculator")
+    print("Windows tools: open Calculator / list windows / focus window / click UI / type text / calculate")
 
     while True:
         try:
