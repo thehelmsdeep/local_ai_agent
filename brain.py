@@ -64,6 +64,9 @@ OR
         command = self._base_command() + self._model_args() + [
             "-n",
             str(self.max_tokens),
+            "-ngl",
+            "0",
+            "-no-cnv",
             "-p",
             prompt,
         ]
