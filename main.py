@@ -35,6 +35,23 @@ FUNCTION_TOOLS = [
     },
     {
         "type": "function",
+        "name": "focus_window",
+        "description": "Find a visible Windows application window by title or partial title and bring it to the foreground.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "title": {
+                    "type": "string",
+                    "description": "Exact or partial visible window title, such as Chrome or Calculator",
+                }
+            },
+            "required": ["title"],
+            "additionalProperties": False,
+        },
+        "strict": True,
+    },
+    {
+        "type": "function",
         "name": "calculator",
         "description": "Open Windows Calculator and enter a simple arithmetic expression.",
         "parameters": {
@@ -57,9 +74,10 @@ SYSTEM_INSTRUCTIONS = """
 You are a local-first Windows AI agent.
 You can inspect visible Windows application windows and control the user's Windows Calculator through tools.
 When the user asks what applications/windows are open, call list_windows.
+When the user asks to focus, activate, or bring a visible application window to the foreground, call focus_window.
 When the user asks to open Calculator, call open_calculator.
 When the user asks to calculate something using Calculator, call calculator.
-Do not claim that you opened, inspected, or controlled an application unless the tool returned successfully.
+Do not claim that you opened, inspected, focused, or controlled an application unless the tool returned successfully.
 """.strip()
 
 
@@ -76,13 +94,17 @@ def demo_agent(task: str) -> str:
     if "list windows" in text or "open windows" in text:
         return str(TOOLS["list_windows"]())
 
+    if text.startswith("focus "):
+        title = task.strip()[6:].strip()
+        return TOOLS["focus_window"](title)
+
     if text.startswith("calculate "):
         expression = task.strip()[10:].strip()
         return TOOLS["calculator"](expression)
 
     return (
         "Demo mode: no OPENAI_API_KEY configured. "
-        "Try 'open calculator', 'list windows', or 'calculate 25 * 4'."
+        "Try 'open calculator', 'list windows', 'focus Chrome', or 'calculate 25 * 4'."
     )
 
 
@@ -139,7 +161,7 @@ def run_agent(task: str) -> str:
 
 def main():
     print("Local AI Agent — type 'exit' to quit")
-    print("Windows tools: open Calculator / list windows / calculate with Calculator")
+    print("Windows tools: open Calculator / list windows / focus window / calculate with Calculator")
 
     while True:
         try:
