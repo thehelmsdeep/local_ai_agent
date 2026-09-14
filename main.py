@@ -52,6 +52,27 @@ FUNCTION_TOOLS = [
     },
     {
         "type": "function",
+        "name": "click_element",
+        "description": "Find a visible UI element by name inside a Windows application window and click it.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "window_title": {
+                    "type": "string",
+                    "description": "Exact or partial application window title",
+                },
+                "element_name": {
+                    "type": "string",
+                    "description": "Visible name of the UI element to click, such as a button label",
+                },
+            },
+            "required": ["window_title", "element_name"],
+            "additionalProperties": False,
+        },
+        "strict": True,
+    },
+    {
+        "type": "function",
         "name": "calculator",
         "description": "Open Windows Calculator and enter a simple arithmetic expression.",
         "parameters": {
@@ -72,12 +93,13 @@ FUNCTION_TOOLS = [
 
 SYSTEM_INSTRUCTIONS = """
 You are a local-first Windows AI agent.
-You can inspect visible Windows application windows and control the user's Windows Calculator through tools.
+You can inspect visible Windows application windows and control Windows UI elements through tools.
 When the user asks what applications/windows are open, call list_windows.
 When the user asks to focus, activate, or bring a visible application window to the foreground, call focus_window.
+When the user asks to click a named UI element inside an application, call click_element.
 When the user asks to open Calculator, call open_calculator.
 When the user asks to calculate something using Calculator, call calculator.
-Do not claim that you opened, inspected, focused, or controlled an application unless the tool returned successfully.
+Do not claim that you opened, inspected, focused, clicked, or controlled an application unless the tool returned successfully.
 """.strip()
 
 
@@ -98,13 +120,20 @@ def demo_agent(task: str) -> str:
         title = task.strip()[6:].strip()
         return TOOLS["focus_window"](title)
 
+    if text.startswith("click "):
+        parts = task.strip()[6:].strip().split(" | ", 1)
+        if len(parts) != 2:
+            return "Demo mode: use 'click Window Title | Element Name'."
+        return TOOLS["click_element"](parts[0], parts[1])
+
     if text.startswith("calculate "):
         expression = task.strip()[10:].strip()
         return TOOLS["calculator"](expression)
 
     return (
         "Demo mode: no OPENAI_API_KEY configured. "
-        "Try 'open calculator', 'list windows', 'focus Chrome', or 'calculate 25 * 4'."
+        "Try 'open calculator', 'list windows', 'focus Chrome', "
+        "'click Calculator | Equals', or 'calculate 25 * 4'."
     )
 
 
@@ -161,7 +190,7 @@ def run_agent(task: str) -> str:
 
 def main():
     print("Local AI Agent — type 'exit' to quit")
-    print("Windows tools: open Calculator / list windows / focus window / calculate with Calculator")
+    print("Windows tools: open Calculator / list windows / focus window / click UI / calculate with Calculator")
 
     while True:
         try:
