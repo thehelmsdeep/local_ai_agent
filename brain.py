@@ -13,16 +13,8 @@ class LocalBrain:
 
     def __init__(self):
         self.llama_cli = os.getenv("LLAMA_CLI_PATH", "llama")
-        self.model_path = Path(
-            os.getenv(
-                "LOCAL_MODEL_PATH",
-                "models/qwen2.5-1.5b-instruct-q4_k_m.gguf",
-            )
-        )
-        self.model_ref = os.getenv(
-            "LOCAL_MODEL_REF",
-            "Qwen/Qwen2.5-1.5B-Instruct-GGUF:Q4_K_M",
-        )
+        self.model_path = Path(os.getenv("LOCAL_MODEL_PATH", "models/qwen2.5-1.5b-instruct-q4_k_m.gguf"))
+        self.model_ref = os.getenv("LOCAL_MODEL_REF", "Qwen/Qwen2.5-1.5B-Instruct-GGUF:Q4_K_M")
         self.max_tokens = int(os.getenv("LOCAL_MAX_TOKENS", "256"))
 
     def _base_command(self):
@@ -40,9 +32,7 @@ class LocalBrain:
         tool_text = json.dumps(tools, ensure_ascii=False, indent=2)
         return f"""You are the planning brain of a Windows computer agent.
 Understand Persian, English, Finglish, and mixed-language commands.
-Choose ONE next action at a time. The Python agent will execute it and give you a new observation.
-Never invent tool names. If the task is complete, return done=true.
-Return ONLY valid JSON. No markdown.
+Return ONLY valid JSON.
 
 Available tools:
 {tool_text}
@@ -80,7 +70,12 @@ OR
         )
 
         if completed.returncode != 0:
-            raise RuntimeError(completed.stderr.strip() or "llama.cpp failed")
+            raise RuntimeError(
+                "llama.cpp failed\nSTDOUT:\n"
+                + completed.stdout[-1000:]
+                + "\nSTDERR:\n"
+                + completed.stderr[-1000:]
+            )
 
         output = completed.stdout.strip()
         start = output.find("{")
@@ -88,4 +83,4 @@ OR
         if start == -1 or end == -1 or end <= start:
             raise ValueError(f"Local brain returned non-JSON output: {output[-500:]}")
 
-        return json.loads(output[start : end + 1])
+        return json.loads(output[start:end + 1])
