@@ -83,32 +83,37 @@ def focus_window(title: str):
     return f"Focused window: {window.window_text().strip()}"
 
 
-def click_element(window_title: str, element_name: str):
-    """Click a visible UI element by its name inside a matching window."""
+def _find_window(window_title: str):
     query = window_title.strip().lower()
-    target = element_name.strip().lower()
-
     if not query:
         raise ValueError("Window title cannot be empty")
-    if not target:
-        raise ValueError("Element name cannot be empty")
 
     windows = _desktop().windows(visible_only=True)
-    window = None
+    partial_match = None
 
     for candidate in windows:
         try:
-            title = candidate.window_text().strip().lower()
-            if title == query or query in title:
-                window = candidate
-                if title == query:
-                    break
+            title = candidate.window_text().strip()
+            normalized = title.lower()
+            if normalized == query:
+                return candidate
+            if query in normalized and partial_match is None:
+                partial_match = candidate
         except Exception:
             continue
 
-    if window is None:
+    if partial_match is None:
         raise RuntimeError(f"Window not found: {window_title}")
+    return partial_match
 
+
+def click_element(window_title: str, element_name: str):
+    """Click a visible UI element by its name inside a matching window."""
+    target = element_name.strip().lower()
+    if not target:
+        raise ValueError("Element name cannot be empty")
+
+    window = _find_window(window_title)
     window.set_focus()
 
     for control in window.descendants():
@@ -125,8 +130,6 @@ def click_element(window_title: str, element_name: str):
 
 def type_text(window_title: str, text: str):
     """Focus a visible window and type text into the currently focused UI control."""
-    if not window_title.strip():
-        raise ValueError("Window title cannot be empty")
     if not text:
         raise ValueError("Text cannot be empty")
 
@@ -135,6 +138,34 @@ def type_text(window_title: str, text: str):
     from pywinauto.keyboard import send_keys
     send_keys(text, with_spaces=True)
     return f"Typed text into '{window_title.strip()}': {text}"
+
+
+def read_ui(window_title: str):
+    """Read visible text from UI elements inside a matching Windows window."""
+    window = _find_window(window_title)
+    window.set_focus()
+
+    items = []
+    seen = set()
+
+    try:
+        window_text = window.window_text().strip()
+        if window_text:
+            items.append(window_text)
+            seen.add(window_text)
+    except Exception:
+        pass
+
+    for control in window.descendants():
+        try:
+            text = control.window_text().strip()
+            if text and text not in seen:
+                seen.add(text)
+                items.append(text)
+        except Exception:
+            continue
+
+    return items
 
 
 def _click_button(window, names):
@@ -197,5 +228,6 @@ TOOLS = {
     "focus_window": focus_window,
     "click_element": click_element,
     "type_text": type_text,
+    "read_ui": read_ui,
     "calculator": calculator,
 }
