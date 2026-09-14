@@ -1,5 +1,6 @@
 import json
 import os
+import re
 
 from dotenv import load_dotenv
 
@@ -27,66 +28,35 @@ FUNCTION_TOOLS = [
         "type": "function",
         "name": "focus_window",
         "description": "Find a visible Windows application window by title or partial title and bring it to the foreground.",
-        "parameters": {
-            "type": "object",
-            "properties": {"title": {"type": "string", "description": "Exact or partial visible window title"}},
-            "required": ["title"],
-            "additionalProperties": False,
-        },
+        "parameters": {"type": "object", "properties": {"title": {"type": "string", "description": "Exact or partial visible window title"}}, "required": ["title"], "additionalProperties": False},
         "strict": True,
     },
     {
         "type": "function",
         "name": "click_element",
         "description": "Find a visible UI element by name inside a Windows application window and click it.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "window_title": {"type": "string", "description": "Exact or partial application window title"},
-                "element_name": {"type": "string", "description": "Visible name of the UI element to click"},
-            },
-            "required": ["window_title", "element_name"],
-            "additionalProperties": False,
-        },
+        "parameters": {"type": "object", "properties": {"window_title": {"type": "string", "description": "Exact or partial application window title"}, "element_name": {"type": "string", "description": "Visible name of the UI element to click"}}, "required": ["window_title", "element_name"], "additionalProperties": False},
         "strict": True,
     },
     {
         "type": "function",
         "name": "type_text",
         "description": "Focus a visible Windows application window and type text into the currently focused UI control.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "window_title": {"type": "string", "description": "Exact or partial application window title"},
-                "text": {"type": "string", "description": "Text to type"},
-            },
-            "required": ["window_title", "text"],
-            "additionalProperties": False,
-        },
+        "parameters": {"type": "object", "properties": {"window_title": {"type": "string", "description": "Exact or partial application window title"}, "text": {"type": "string", "description": "Text to type"}}, "required": ["window_title", "text"], "additionalProperties": False},
         "strict": True,
     },
     {
         "type": "function",
         "name": "read_ui",
         "description": "Read visible text from UI elements inside a Windows application window.",
-        "parameters": {
-            "type": "object",
-            "properties": {"window_title": {"type": "string", "description": "Exact or partial application window title"}},
-            "required": ["window_title"],
-            "additionalProperties": False,
-        },
+        "parameters": {"type": "object", "properties": {"window_title": {"type": "string", "description": "Exact or partial application window title"}}, "required": ["window_title"], "additionalProperties": False},
         "strict": True,
     },
     {
         "type": "function",
         "name": "calculator",
         "description": "Open Windows Calculator and enter a simple arithmetic expression.",
-        "parameters": {
-            "type": "object",
-            "properties": {"expression": {"type": "string", "description": "Arithmetic expression such as 25 * 4"}},
-            "required": ["expression"],
-            "additionalProperties": False,
-        },
+        "parameters": {"type": "object", "properties": {"expression": {"type": "string", "description": "Arithmetic expression such as 25 * 4"}}, "required": ["expression"], "additionalProperties": False},
         "strict": True,
     },
 ]
@@ -109,9 +79,54 @@ Do not claim an action succeeded unless the tool returned successfully.
 """.strip()
 
 
-def demo_agent(task: str) -> str:
-    text = task.strip().lower()
+def _parse_local_calculation(task: str):
+    normalized = task.strip().lower()
+    if "calculator" not in normalized and "حساب" not in normalized and "محاسبه" not in normalized:
+        return None
 
+    expression = None
+    patterns = [
+        r"(-?\d+(?:\.\d+)?)\s*([+\-*/x×÷])\s*(-?\d+(?:\.\d+)?)",
+        r"(-?\d+)\s*(جمع|به علاوه|منهای|ضرب|تقسیم)\s*(-?\d+)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, normalized)
+        if match:
+            left, op, right = match.groups()
+            op_map = {"x": "*", "×": "*", "÷": "/", "جمع": "+", "به علاوه": "+", "منهای": "-", "ضرب": "*", "تقسیم": "/"}
+            expression = f"{left}{op_map.get(op, op)}{right}"
+            break
+    return expression
+
+
+def _local_calculator_agent(task: str):
+    expression = _parse_local_calculation(task)
+    if not expression:
+        return None
+
+    print("Agent [local planner] > Observe: checking Calculator")
+    try:
+        read_before = TOOLS["read_ui"]("Calculator")
+        print(f"Agent [observe] > {read_before}")
+    except Exception:
+        print("Agent [observe] > Calculator not found; opening it")
+        TOOLS["open_calculator"]()
+        read_before = TOOLS["read_ui"]("Calculator")
+        print(f"Agent [observe] > {read_before}")
+
+    print(f"Agent [think] > Plan: enter {expression} and verify the result")
+    print("Agent [act] > calculator")
+    result = TOOLS["calculator"](expression)
+    print(f"Agent [observe] > {TOOLS['read_ui']('Calculator')}")
+    return result
+
+
+def demo_agent(task: str) -> str:
+    local_result = _local_calculator_agent(task)
+    if local_result is not None:
+        return str(local_result)
+
+    text = task.strip().lower()
     if text in {"hello", "hi", "test"}:
         return "Agent is working locally."
     if "open calculator" in text or "calculator رو باز" in text:
@@ -135,11 +150,7 @@ def demo_agent(task: str) -> str:
     if text.startswith("calculate "):
         return TOOLS["calculator"](task.strip()[10:].strip())
 
-    return (
-        "Demo mode: no OPENAI_API_KEY configured. Try 'open calculator', 'list windows', "
-        "'focus Chrome', 'click Calculator | Equals', 'type Chrome | hello', "
-        "'read Chrome', or 'calculate 25 * 4'."
-    )
+    return "Demo mode: no OPENAI_API_KEY configured. Try a supported Windows task such as 'open calculator', 'read Calculator', or 'calculate 25 * 4'."
 
 
 def run_with_llm(task: str) -> str:
