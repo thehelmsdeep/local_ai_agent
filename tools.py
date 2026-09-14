@@ -83,6 +83,46 @@ def focus_window(title: str):
     return f"Focused window: {window.window_text().strip()}"
 
 
+def click_element(window_title: str, element_name: str):
+    """Click a visible UI element by its name inside a matching window."""
+    query = window_title.strip().lower()
+    target = element_name.strip().lower()
+
+    if not query:
+        raise ValueError("Window title cannot be empty")
+    if not target:
+        raise ValueError("Element name cannot be empty")
+
+    windows = _desktop().windows(visible_only=True)
+    window = None
+
+    for candidate in windows:
+        try:
+            title = candidate.window_text().strip().lower()
+            if title == query or query in title:
+                window = candidate
+                if title == query:
+                    break
+        except Exception:
+            continue
+
+    if window is None:
+        raise RuntimeError(f"Window not found: {window_title}")
+
+    window.set_focus()
+
+    for control in window.descendants():
+        try:
+            text = control.window_text().strip()
+            if text and (target in text.lower() or text.lower() in target):
+                control.click_input()
+                return f"Clicked '{text}' in '{window.window_text().strip()}'"
+        except Exception:
+            continue
+
+    raise RuntimeError(f"UI element not found: {element_name}")
+
+
 def _click_button(window, names):
     """Find a Calculator button using possible UI names."""
     buttons = window.descendants(control_type="Button")
@@ -141,5 +181,6 @@ TOOLS = {
     "open_calculator": open_calculator,
     "list_windows": list_windows,
     "focus_window": focus_window,
+    "click_element": click_element,
     "calculator": calculator,
 }
