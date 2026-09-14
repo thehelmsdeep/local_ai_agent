@@ -23,6 +23,18 @@ FUNCTION_TOOLS = [
     },
     {
         "type": "function",
+        "name": "list_windows",
+        "description": "List visible top-level Windows application window titles.",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": False,
+        },
+        "strict": True,
+    },
+    {
+        "type": "function",
         "name": "calculator",
         "description": "Open Windows Calculator and enter a simple arithmetic expression.",
         "parameters": {
@@ -43,10 +55,11 @@ FUNCTION_TOOLS = [
 
 SYSTEM_INSTRUCTIONS = """
 You are a local-first Windows AI agent.
-You can control the user's Windows Calculator through tools.
+You can inspect visible Windows application windows and control the user's Windows Calculator through tools.
+When the user asks what applications/windows are open, call list_windows.
 When the user asks to open Calculator, call open_calculator.
 When the user asks to calculate something using Calculator, call calculator.
-Do not claim that you opened or controlled an application unless the tool returned successfully.
+Do not claim that you opened, inspected, or controlled an application unless the tool returned successfully.
 """.strip()
 
 
@@ -60,13 +73,16 @@ def demo_agent(task: str) -> str:
     if "open calculator" in text or "calculator رو باز" in text:
         return TOOLS["open_calculator"]()
 
+    if "list windows" in text or "open windows" in text:
+        return str(TOOLS["list_windows"]())
+
     if text.startswith("calculate "):
         expression = task.strip()[10:].strip()
         return TOOLS["calculator"](expression)
 
     return (
         "Demo mode: no OPENAI_API_KEY configured. "
-        "Try 'open calculator' or 'calculate 25 * 4'."
+        "Try 'open calculator', 'list windows', or 'calculate 25 * 4'."
     )
 
 
@@ -123,7 +139,7 @@ def run_agent(task: str) -> str:
 
 def main():
     print("Local AI Agent — type 'exit' to quit")
-    print("Windows tools: open Calculator / calculate with Calculator")
+    print("Windows tools: open Calculator / list windows / calculate with Calculator")
 
     while True:
         try:
