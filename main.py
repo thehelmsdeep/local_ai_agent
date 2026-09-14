@@ -79,6 +79,20 @@ Do not claim an action succeeded unless the tool returned successfully.
 """.strip()
 
 
+def _ollama_tools():
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": tool["name"],
+                "description": tool["description"],
+                "parameters": tool["parameters"],
+            },
+        }
+        for tool in FUNCTION_TOOLS
+    ]
+
+
 def _parse_local_calculation(task: str):
     normalized = task.strip().lower()
     if "calculator" not in normalized and "حساب" not in normalized and "محاسبه" not in normalized:
@@ -150,7 +164,39 @@ def demo_agent(task: str) -> str:
     if text.startswith("calculate "):
         return TOOLS["calculator"](task.strip()[10:].strip())
 
-    return "Demo mode: no OPENAI_API_KEY configured. Try a supported Windows task such as 'open calculator', 'read Calculator', or 'calculate 25 * 4'."
+    return "Demo mode: no local brain configured. Try a supported Windows task such as 'open calculator', 'read Calculator', or 'calculate 25 * 4'."
+
+
+def run_with_ollama(task: str) -> str:
+    import ollama
+
+    model = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
+    messages = [
+        {"role": "system", "content": SYSTEM_INSTRUCTIONS},
+        {"role": "user", "content": task},
+    ]
+
+    for _ in range(8):
+        response = ollama.chat(model=model, messages=messages, tools=_ollama_tools())
+        message = response.message
+        messages.append(message)
+
+        tool_calls = getattr(message, "tool_calls", None) or []
+        if not tool_calls:
+            return message.content or "Agent finished without a text response."
+
+        for call in tool_calls:
+            try:
+                args = call.function.arguments or {}
+                result = TOOLS[call.function.name](**args)
+            except Exception as exc:
+                result = f"Tool error: {exc}"
+            messages.append({
+                "role": "tool",
+                "content": str(result),
+            })
+
+    return "Local agent stopped after reaching the tool-call limit."
 
 
 def run_with_llm(task: str) -> str:
@@ -179,14 +225,20 @@ def run_with_llm(task: str) -> str:
 
 
 def run_agent(task: str) -> str:
-    if not os.getenv("OPENAI_API_KEY"):
-        return demo_agent(task)
-    return run_with_llm(task)
+    if os.getenv("OPENAI_API_KEY"):
+        return run_with_llm(task)
+    if os.getenv("LOCAL_BRAIN", "ollama").lower() == "ollama":
+        try:
+            return run_with_ollama(task)
+        except Exception as exc:
+            print(f"Agent [local brain] > Ollama unavailable: {exc}")
+    return demo_agent(task)
 
 
 def main():
     print("Local AI Agent — type 'exit' to quit")
     print("Windows tools: observe / focus / click / type / read / calculate")
+    print(f"Local brain: {os.getenv('LOCAL_BRAIN', 'ollama')}")
 
     while True:
         try:
