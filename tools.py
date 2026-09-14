@@ -27,6 +27,26 @@ def open_calculator() -> bool:
     return False
 
 
+def list_windows():
+    """Return visible top-level Windows application titles."""
+    desktop = Desktop(backend="uia")
+    windows = desktop.windows(visible_only=True)
+
+    titles = []
+    seen = set()
+
+    for window in windows:
+        try:
+            title = window.window_text().strip()
+            if title and title not in seen:
+                seen.add(title)
+                titles.append(title)
+        except Exception:
+            continue
+
+    return titles
+
+
 def _click_button(window, names):
     """Find a Calculator button using possible UI names."""
     buttons = window.descendants(control_type="Button")
@@ -83,5 +103,6 @@ def calculator(expression: str):
 
 TOOLS = {
     "open_calculator": open_calculator,
+    "list_windows": list_windows,
     "calculator": calculator,
 }
