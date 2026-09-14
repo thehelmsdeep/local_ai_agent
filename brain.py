@@ -66,7 +66,6 @@ OR
             str(self.max_tokens),
             "-ngl",
             "0",
-            "-no-cnv",
             "-p",
             prompt,
         ]
