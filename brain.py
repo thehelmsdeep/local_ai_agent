@@ -12,17 +12,29 @@ class LocalBrain:
     """Small local planner powered by Qwen GGUF through llama.cpp."""
 
     def __init__(self):
-        self.llama_cli = os.getenv("LLAMA_CLI_PATH", "llama-cli")
+        self.llama_cli = os.getenv("LLAMA_CLI_PATH", "llama")
         self.model_path = Path(
             os.getenv(
                 "LOCAL_MODEL_PATH",
                 "models/qwen2.5-1.5b-instruct-q4_k_m.gguf",
             )
         )
+        self.model_ref = os.getenv(
+            "LOCAL_MODEL_REF",
+            "Qwen/Qwen2.5-1.5B-Instruct-GGUF:Q4_K_M",
+        )
         self.max_tokens = int(os.getenv("LOCAL_MAX_TOKENS", "256"))
 
-    def available(self):
-        return self.model_path.exists()
+    def _base_command(self):
+        executable = Path(self.llama_cli).name.lower()
+        if executable in {"llama", "llama.exe"}:
+            return [self.llama_cli, "cli"]
+        return [self.llama_cli]
+
+    def _model_args(self):
+        if self.model_path.exists():
+            return ["-m", str(self.model_path)]
+        return ["-hf", self.model_ref]
 
     def _prompt(self, task, observation, tools):
         tool_text = json.dumps(tools, ensure_ascii=False, indent=2)
@@ -48,16 +60,8 @@ OR
 """
 
     def think(self, task, observation, tools):
-        if not self.available():
-            raise FileNotFoundError(
-                f"Local model not found: {self.model_path}. Download the Qwen GGUF model first."
-            )
-
         prompt = self._prompt(task, observation, tools)
-        command = [
-            self.llama_cli,
-            "-m",
-            str(self.model_path),
+        command = self._base_command() + self._model_args() + [
             "-n",
             str(self.max_tokens),
             "-p",
