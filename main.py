@@ -30,17 +30,25 @@ class WindowsAgent:
 
         for step in range(8):
             print(f"Agent [observe] > {observation}")
-            decision = self.brain.think(task, observation, TOOL_DESCRIPTIONS)
+
+            decision = self.brain.think(
+                task,
+                observation,
+                TOOL_DESCRIPTIONS,
+                allow_done=step > 0,
+            )
+
+            print(f"Agent [think] > {decision.get('message', '')}")
 
             if decision.get("done"):
                 return str(decision.get("message", "Task completed."))
 
             tool_name = decision.get("tool")
             args = decision.get("args") or {}
+
             if tool_name not in TOOLS:
                 return f"Agent error: unknown tool '{tool_name}'."
 
-            print(f"Agent [think] > {decision.get('message', '')}")
             print(f"Agent [act] > {tool_name} {args}")
 
             try:
