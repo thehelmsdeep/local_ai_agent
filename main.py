@@ -47,6 +47,24 @@ class WindowsAgent:
         return None
 
     @staticmethod
+    def _simple_intent(task: str):
+        text = WindowsAgent._normalize_task(task).lower()
+
+        greetings = {
+            "hello", "hi", "hey", "salam", "سلام", "درود", "helo"
+        }
+        if text in greetings:
+            return {"done": True, "message": "Hello! I'm ready to control Windows.", "tool": "", "args": {}}
+
+        if text in {"open calculator", "open calc", "calculator", "calc", "ماشین حساب", "باز کن ماشین حساب"}:
+            return {"done": False, "message": "Opening Calculator.", "tool": "open_calculator", "args": {}}
+
+        if text in {"list windows", "show windows", "windows", "پنجره ها", "لیست پنجره ها"}:
+            return {"done": False, "message": "Listing visible windows.", "tool": "list_windows", "args": {}}
+
+        return None
+
+    @staticmethod
     def _safe_calculate(expression: str):
         """Calculate the already validated arithmetic expression without eval()."""
         tree = ast.parse(expression, mode="eval")
@@ -81,11 +99,14 @@ class WindowsAgent:
         task = self._normalize_task(task)
         observation = self._observe()
         forced_tool = self._simple_calculator_task(task)
+        simple_intent = self._simple_intent(task)
 
         for step in range(8):
             print(f"Agent [observe] > {observation}")
 
-            if forced_tool is not None and step == 0:
+            if simple_intent is not None and step == 0:
+                decision = simple_intent
+            elif forced_tool is not None and step == 0:
                 decision = {
                     "done": False,
                     "message": "Arithmetic task detected; using calculator.",
@@ -119,6 +140,14 @@ class WindowsAgent:
                 result = f"Tool error: {exc}"
 
             observation = str(result)
+
+            if simple_intent is not None and step == 0:
+                if observation.startswith("Tool error:"):
+                    return observation
+                if simple_intent["tool"] == "open_calculator":
+                    return "Calculator opened."
+                if simple_intent["tool"] == "list_windows":
+                    return observation
 
             if forced_tool is not None and step == 0:
                 if observation.startswith("Tool error:"):
