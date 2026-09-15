@@ -1,4 +1,5 @@
 import json
+import re
 
 from brain import LocalBrain
 from tools import TOOLS
@@ -25,18 +26,39 @@ class WindowsAgent:
         except Exception as exc:
             return f"Observation error: {exc}"
 
+    @staticmethod
+    def _simple_calculator_task(task: str):
+        text = task.strip()
+        match = re.fullmatch(
+            r"(?:calculate|calc|محاسبه|حساب کن)\s+([0-9+\-*/().%\s]+)",
+            text,
+            re.IGNORECASE,
+        )
+        if match:
+            return match.group(1).strip()
+        return None
+
     def run(self, task: str) -> str:
         observation = self._observe()
+        forced_tool = self._simple_calculator_task(task)
 
         for step in range(8):
             print(f"Agent [observe] > {observation}")
 
-            decision = self.brain.think(
-                task,
-                observation,
-                TOOL_DESCRIPTIONS,
-                allow_done=step > 0,
-            )
+            if forced_tool is not None and step == 0:
+                decision = {
+                    "done": False,
+                    "message": "Arithmetic task detected; using calculator.",
+                    "tool": "calculator",
+                    "args": {"expression": forced_tool},
+                }
+            else:
+                decision = self.brain.think(
+                    task,
+                    observation,
+                    TOOL_DESCRIPTIONS,
+                    allow_done=step > 0 and "Tool error" not in observation,
+                )
 
             print(f"Agent [think] > {decision.get('message', '')}")
 
