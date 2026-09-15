@@ -27,8 +27,15 @@ class WindowsAgent:
             return f"Observation error: {exc}"
 
     @staticmethod
-    def _simple_calculator_task(task: str):
+    def _normalize_task(task: str) -> str:
         text = task.strip()
+        while text.lower().startswith("you >"):
+            text = text[5:].strip()
+        return text
+
+    @staticmethod
+    def _simple_calculator_task(task: str):
+        text = WindowsAgent._normalize_task(task)
         match = re.fullmatch(
             r"(?:calculate|calc|محاسبه|حساب کن)\s+([0-9+\-*/().%\s]+)",
             text,
@@ -39,6 +46,7 @@ class WindowsAgent:
         return None
 
     def run(self, task: str) -> str:
+        task = self._normalize_task(task)
         observation = self._observe()
         forced_tool = self._simple_calculator_task(task)
 
