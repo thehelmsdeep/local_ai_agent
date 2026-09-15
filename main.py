@@ -1,6 +1,5 @@
 import ast
 import json
-import re
 
 from brain import LocalBrain
 from tools import TOOLS
@@ -35,38 +34,7 @@ class WindowsAgent:
         return text
 
     @staticmethod
-    def _simple_calculator_task(task: str):
-        text = WindowsAgent._normalize_task(task)
-        match = re.fullmatch(
-            r"(?:calculate|calc|محاسبه|حساب کن)\s+([0-9+\-*/().%\s]+)",
-            text,
-            re.IGNORECASE,
-        )
-        if match:
-            return match.group(1).strip()
-        return None
-
-    @staticmethod
-    def _simple_intent(task: str):
-        text = WindowsAgent._normalize_task(task).lower()
-
-        greetings = {
-            "hello", "hi", "hey", "salam", "سلام", "درود", "helo"
-        }
-        if text in greetings:
-            return {"done": True, "message": "Hello! I'm ready to control Windows.", "tool": "", "args": {}}
-
-        if text in {"open calculator", "open calc", "calculator", "calc", "ماشین حساب", "باز کن ماشین حساب"}:
-            return {"done": False, "message": "Opening Calculator.", "tool": "open_calculator", "args": {}}
-
-        if text in {"list windows", "show windows", "windows", "پنجره ها", "لیست پنجره ها"}:
-            return {"done": False, "message": "Listing visible windows.", "tool": "list_windows", "args": {}}
-
-        return None
-
-    @staticmethod
     def _safe_calculate(expression: str):
-        """Calculate the already validated arithmetic expression without eval()."""
         tree = ast.parse(expression, mode="eval")
 
         def evaluate(node):
@@ -98,35 +66,23 @@ class WindowsAgent:
     def run(self, task: str) -> str:
         task = self._normalize_task(task)
         observation = self._observe()
-        forced_tool = self._simple_calculator_task(task)
-        simple_intent = self._simple_intent(task)
 
         for step in range(8):
             print(f"Agent [observe] > {observation}")
 
-            if simple_intent is not None and step == 0:
-                decision = simple_intent
-            elif forced_tool is not None and step == 0:
-                decision = {
-                    "done": False,
-                    "message": "Arithmetic task detected; using calculator.",
-                    "tool": "calculator",
-                    "args": {"expression": forced_tool},
-                }
-            else:
-                decision = self.brain.think(
-                    task,
-                    observation,
-                    TOOL_DESCRIPTIONS,
-                    allow_done=step > 0 and "Tool error" not in observation,
-                )
+            decision = self.brain.think(
+                task,
+                observation,
+                TOOL_DESCRIPTIONS,
+                allow_done=True,
+            )
 
             print(f"Agent [think] > {decision.get('message', '')}")
 
             if decision.get("done"):
                 return str(decision.get("message", "Task completed."))
 
-            tool_name = decision.get("tool")
+            tool_name = decision.get("tool", "")
             args = decision.get("args") or {}
 
             if tool_name not in TOOLS:
@@ -140,23 +96,6 @@ class WindowsAgent:
                 result = f"Tool error: {exc}"
 
             observation = str(result)
-
-            if simple_intent is not None and step == 0:
-                if observation.startswith("Tool error:"):
-                    return observation
-                if simple_intent["tool"] == "open_calculator":
-                    return "Calculator opened."
-                if simple_intent["tool"] == "list_windows":
-                    return observation
-
-            if forced_tool is not None and step == 0:
-                if observation.startswith("Tool error:"):
-                    return observation
-                try:
-                    answer = self._safe_calculate(forced_tool)
-                    return f"{forced_tool} = {answer}"
-                except Exception as exc:
-                    return f"Calculator completed, but result parsing failed: {exc}"
 
         return "Agent stopped after reaching the planning step limit."
 
