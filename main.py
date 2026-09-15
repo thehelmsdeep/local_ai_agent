@@ -1,3 +1,4 @@
+import ast
 import json
 import re
 
@@ -45,6 +46,37 @@ class WindowsAgent:
             return match.group(1).strip()
         return None
 
+    @staticmethod
+    def _safe_calculate(expression: str):
+        """Calculate the already validated arithmetic expression without eval()."""
+        tree = ast.parse(expression, mode="eval")
+
+        def evaluate(node):
+            if isinstance(node, ast.Expression):
+                return evaluate(node.body)
+            if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+                return node.value
+            if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
+                value = evaluate(node.operand)
+                return value if isinstance(node.op, ast.UAdd) else -value
+            if isinstance(node, ast.BinOp):
+                left = evaluate(node.left)
+                right = evaluate(node.right)
+                operations = {
+                    ast.Add: lambda: left + right,
+                    ast.Sub: lambda: left - right,
+                    ast.Mult: lambda: left * right,
+                    ast.Div: lambda: left / right,
+                    ast.Mod: lambda: left % right,
+                }
+                operation = operations.get(type(node.op))
+                if operation is None:
+                    raise ValueError("Unsupported arithmetic operator")
+                return operation()
+            raise ValueError("Unsupported arithmetic expression")
+
+        return evaluate(tree)
+
     def run(self, task: str) -> str:
         task = self._normalize_task(task)
         observation = self._observe()
@@ -87,6 +119,15 @@ class WindowsAgent:
                 result = f"Tool error: {exc}"
 
             observation = str(result)
+
+            if forced_tool is not None and step == 0:
+                if observation.startswith("Tool error:"):
+                    return observation
+                try:
+                    answer = self._safe_calculate(forced_tool)
+                    return f"{forced_tool} = {answer}"
+                except Exception as exc:
+                    return f"Calculator completed, but result parsing failed: {exc}"
 
         return "Agent stopped after reaching the planning step limit."
 
