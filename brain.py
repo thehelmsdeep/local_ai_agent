@@ -11,22 +11,17 @@ load_dotenv()
 class LocalBrain:
     def __init__(self):
         self.llama_cli = os.getenv("LLAMA_CLI_PATH", "llama")
-
         self.model_path = Path(
             os.getenv(
                 "LOCAL_MODEL_PATH",
                 "models/qwen2.5-1.5b-instruct-q4_k_m.gguf",
             )
         )
-
         self.model_ref = os.getenv(
             "LOCAL_MODEL_REF",
             "Qwen/Qwen2.5-1.5B-Instruct-GGUF:Q4_K_M",
         )
-
-        self.max_tokens = int(
-            os.getenv("LOCAL_MAX_TOKENS", "64")
-        )
+        self.max_tokens = int(os.getenv("LOCAL_MAX_TOKENS", "128"))
 
     def _base_command(self):
         executable = Path(self.llama_cli).name.lower()
@@ -39,7 +34,7 @@ class LocalBrain:
             return ["-m", str(self.model_path)]
         return ["-hf", self.model_ref]
 
-    def _schema(self, tools):
+    def _schema(self, tools, allow_done):
         tool_names = [
             tool["name"]
             for tool in tools
@@ -50,38 +45,35 @@ class LocalBrain:
             "type": "object",
             "properties": {
                 "done": {
-                    "type": "boolean"
+                    "type": "boolean",
+                    "enum": [True] if allow_done else [False],
                 },
-                "message": {
-                    "type": "string"
-                },
+                "message": {"type": "string"},
                 "tool": {
                     "type": "string",
-                    "enum": [""] + tool_names
+                    "enum": [""] + tool_names,
                 },
-                "args": {
-                    "type": "object"
-                }
+                "args": {"type": "object"},
             },
-            "required": [
-                "done",
-                "message",
-                "tool",
-                "args"
-            ]
+            "required": ["done", "message", "tool", "args"],
         }
 
-    def _prompt(self, task, observation, tools):
-        tools_json = json.dumps(
-            tools,
-            ensure_ascii=False,
-            indent=2,
-        )
+    def _prompt(self, task, observation, tools, allow_done):
+        tools_json = json.dumps(tools, ensure_ascii=False, indent=2)
+
+        if allow_done:
+            completion_rule = (
+                'If the user task is complete, set done=true and tool="". '
+                "Otherwise select the next tool."
+            )
+        else:
+            completion_rule = (
+                "This is the first planning step. You MUST choose a tool "
+                "and set done=false. Do not finish the task yet."
+            )
 
         return f"""You are the planning brain of a Windows computer agent.
 Understand Persian, English, Finglish, and mixed-language commands.
-
-Your job is to decide the next action.
 
 Available tools:
 {tools_json}
@@ -93,17 +85,16 @@ User task:
 {task}
 
 Rules:
-1. If a tool is needed, set done=false.
-2. Select exactly one tool from Available tools.
+1. {completion_rule}
+2. Use exactly one tool from Available tools when done=false.
 3. Use the exact tool name.
 4. Put all tool parameters inside args.
-5. If the task is already complete, set done=true and tool="".
-6. Keep message short.
+5. Keep message short.
 """
 
-    def think(self, task, observation, tools):
-        prompt = self._prompt(task, observation, tools)
-        schema = self._schema(tools)
+    def think(self, task, observation, tools, allow_done=True):
+        prompt = self._prompt(task, observation, tools, allow_done)
+        schema = self._schema(tools, allow_done)
 
         command = (
             self._base_command()
@@ -139,44 +130,32 @@ Rules:
             )
 
         output = result.stdout.strip()
-
         start = output.find("{")
         end = output.rfind("}")
 
         if start == -1 or end == -1 or end <= start:
             raise ValueError(
-                "Local brain returned no JSON:\n"
-                + output[-1000:]
+                "Local brain returned no JSON:\n" + output[-1000:]
             )
 
         try:
-            data = json.loads(
-                output[start:end + 1]
-            )
+            data = json.loads(output[start:end + 1])
         except json.JSONDecodeError as exc:
             raise ValueError(
-                "Local brain returned invalid JSON:\n"
-                + output[-1000:]
+                "Local brain returned invalid JSON:\n" + output[-1000:]
             ) from exc
 
         if not isinstance(data, dict):
             raise ValueError(
-                "Local brain JSON is not an object:\n"
-                + output[-1000:]
+                "Local brain JSON is not an object:\n" + output[-1000:]
             )
 
-        data["done"] = bool(
-            data.get("done", False)
-        )
-
-        data["message"] = str(
-            data.get("message", "")
-        )
+        data["done"] = bool(data.get("done", False))
+        data["message"] = str(data.get("message", ""))
 
         tool = data.get("tool", "")
         if not isinstance(tool, str):
             tool = ""
-
         data["tool"] = tool.strip().lower()
 
         if not isinstance(data.get("args"), dict):
@@ -188,6 +167,9 @@ Rules:
             if isinstance(tool, dict)
             and isinstance(tool.get("name"), str)
         }
+
+        if not allow_done and data["done"]:
+            raise ValueError("Local brain tried to finish before executing a tool.")
 
         if data["tool"] and data["tool"] not in valid_tools:
             raise ValueError(
