@@ -42,6 +42,7 @@ class LocalBrain:
                 "args": {"type": "object"},
             },
             "required": ["done", "message", "tool", "args"],
+            "additionalProperties": False,
         }
 
     def _prompt(self, task, observation, tools, allow_done):
@@ -59,11 +60,12 @@ IMPORTANT:
 - For arithmetic like "calculate 12 * 2", ALWAYS choose calculator.
 - calculator args MUST be {{"expression":"12 * 2"}}.
 - open_calculator only opens Calculator; it is NOT the arithmetic tool.
-- click_element args MUST be {{"window_title":"...","element_name":"..."}}.
-- focus_window args MUST be {{"title":"..."}}.
-- type_text args MUST be {{"window_title":"...","text":"..."}}.
-- read_ui args MUST be {{"window_title":"..."}}.
-- list_windows and open_calculator use {{}}.
+- click_element args MUST be {{"window_title":"...","element_name":"..."}} and NOTHING ELSE.
+- focus_window args MUST be {{"title":"..."}} and NOTHING ELSE.
+- type_text args MUST be {{"window_title":"...","text":"..."}} and NOTHING ELSE.
+- read_ui args MUST be {{"window_title":"..."}} and NOTHING ELSE.
+- list_windows and open_calculator use {{}} and NOTHING ELSE.
+- NEVER invent argument names such as command, query, id, type, input, or output.
 
 Available tools:
 {tool_text}
@@ -78,10 +80,48 @@ Rules:
 1. {completion_rule}
 2. When done=false, select exactly one available tool.
 3. Use the exact tool name.
-4. Use the exact argument names for that tool.
-5. If the observation contains "Tool error", the task is NOT complete.
-6. Keep message short.
+4. Use ONLY the exact argument names defined for that tool.
+5. Do not add extra arguments.
+6. If the observation contains "Tool error", the task is NOT complete.
+7. Keep message short.
 """
+
+    @staticmethod
+    def _validate_args(tool_name, args):
+        expected = {
+            "open_calculator": set(),
+            "list_windows": set(),
+            "focus_window": {"title"},
+            "click_element": {"window_title", "element_name"},
+            "type_text": {"window_title", "text"},
+            "read_ui": {"window_title"},
+            "calculator": {"expression"},
+        }
+
+        if tool_name not in expected:
+            return
+
+        if not isinstance(args, dict):
+            raise ValueError(f"Tool '{tool_name}' args must be an object.")
+
+        actual = set(args.keys())
+        required = expected[tool_name]
+
+        if actual != required:
+            missing = sorted(required - actual)
+            extra = sorted(actual - required)
+            details = []
+            if missing:
+                details.append(f"missing={missing}")
+            if extra:
+                details.append(f"extra={extra}")
+            raise ValueError(
+                f"Invalid args for tool '{tool_name}': " + ", ".join(details)
+            )
+
+        for key in required:
+            if not isinstance(args[key], str):
+                raise ValueError(f"Argument '{key}' for tool '{tool_name}' must be a string.")
 
     def think(self, task, observation, tools, allow_done=True):
         prompt = self._prompt(task, observation, tools, allow_done)
@@ -154,5 +194,7 @@ Rules:
         if data["done"]:
             data["tool"] = ""
             data["args"] = {}
+        else:
+            self._validate_args(data["tool"], data["args"])
 
         return data
